@@ -25,16 +25,16 @@ cv2.ocl.setUseOpenCL(False)
 
 # ========================= CONFIG =============================
 DATA_ROOT = "data/bdd100k"
-IMG_SIZE = 512
+IMG_SIZE = 448
 BATCH_SIZE = 8
-EPOCHS = 20
+EPOCHS = 35
 LR = 1e-3
 WEIGHT_DECAY = 1e-4
 
-NUM_WORKERS = 0
-PIN_MEMORY = False
+NUM_WORKERS = 2
+PIN_MEMORY = True
 
-VAL_SUBSET = 1000
+VAL_SUBSET = 500
 SEED = 42
 USE_AMP = True
 
@@ -372,3 +372,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
