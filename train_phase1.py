@@ -6,6 +6,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
 from models.MiMo import MiMo
 from datasets.BDD100kDriveDataset import BDD100kDriveDataset
 from losses.LossModules import SegmentationLoss
@@ -39,7 +44,7 @@ SAVE_DIR = "checkpoints"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 # None => train from scratch
-RESUME_CKPT = os.path.join(SAVE_DIR, "mimo_phase1_last.pth")
+RESUME_CKPT = os.path.join(SAVE_DIR, "mimo_phase1_last_full.pth")
 # =============================================================
 
 
@@ -95,13 +100,27 @@ def build_checkpoint(
     }
 
 
+def save_checkpoint_pair(full_ckpt, model, full_path, weights_path):
+    """
+    Save both formats:
+    - full checkpoint for training resume
+    - weights-only state_dict for inference/visualization compatibility
+    """
+    torch.save(full_ckpt, full_path)
+    torch.save(model.state_dict(), weights_path)
+
+
 def try_resume(model, optimizer, scaler, ckpt_path):
     start_epoch = 0
     best_val_loss = float("inf")
     best_val_iou = 0.0
 
     if ckpt_path is None or not os.path.exists(ckpt_path):
-        return start_epoch, best_val_loss, best_val_iou
+        fallback = os.path.join(SAVE_DIR, "mimo_phase1_last.pth")
+        if os.path.exists(fallback):
+            ckpt_path = fallback
+        else:
+            return start_epoch, best_val_loss, best_val_iou
 
     print(f">>> Resuming from checkpoint: {ckpt_path}")
     ckpt = torch.load(ckpt_path, map_location=DEVICE)
@@ -187,7 +206,17 @@ def main():
         model.train()
         train_loss = 0.0
 
-        for step, batch in enumerate(train_loader):
+        train_iter = enumerate(train_loader)
+        if tqdm is not None:
+            train_iter = tqdm(
+                train_iter,
+                total=len(train_loader),
+                desc=f"Epoch {epoch + 1}/{EPOCHS} [Train]",
+                ncols=100,
+                leave=True,
+            )
+
+        for step, batch in train_iter:
             images = batch["image"].to(DEVICE, non_blocking=True)
             targets = batch["drive_area"].to(DEVICE, non_blocking=True)
 
@@ -209,10 +238,9 @@ def main():
 
             train_loss += loss.item()
 
-            if step == 0:
-                print(f"[Train] First batch loss: {loss.item():.4f}")
-            if step % 100 == 0 and step > 0:
-                print(f"[Train] Step {step}/{len(train_loader)}")
+            if tqdm is not None:
+                avg_train_loss = train_loss / (step + 1)
+                train_iter.set_postfix(loss=f"{avg_train_loss:.4f}")
 
         train_loss /= max(len(train_loader), 1)
 
@@ -224,9 +252,6 @@ def main():
 
         with torch.no_grad():
             for i, batch in enumerate(val_loader):
-                if i == 0:
-                    print(">>> Validation started")
-
                 images = batch["image"].to(DEVICE, non_blocking=True)
                 targets = batch["drive_area"].to(DEVICE, non_blocking=True)
 
@@ -271,27 +296,31 @@ def main():
         )
 
         # -------- Save LAST --------
-        last_path = os.path.join(SAVE_DIR, "mimo_phase1_last.pth")
-        torch.save(ckpt, last_path)
+        last_full_path = os.path.join(SAVE_DIR, "mimo_phase1_last_full.pth")
+        last_weights_path = os.path.join(SAVE_DIR, "mimo_phase1_last.pth")
+        save_checkpoint_pair(ckpt, model, last_full_path, last_weights_path)
 
         # -------- Save per-epoch --------
-        epoch_path = os.path.join(SAVE_DIR, f"mimo_phase1_epoch_{epoch + 1}.pth")
-        torch.save(ckpt, epoch_path)
+        epoch_full_path = os.path.join(SAVE_DIR, f"mimo_phase1_epoch_{epoch + 1}_full.pth")
+        epoch_weights_path = os.path.join(SAVE_DIR, f"mimo_phase1_epoch_{epoch + 1}.pth")
+        save_checkpoint_pair(ckpt, model, epoch_full_path, epoch_weights_path)
 
         # -------- Save BEST by val loss --------
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             ckpt["best_val_loss"] = best_val_loss
-            best_loss_path = os.path.join(SAVE_DIR, "mimo_phase1_best_loss.pth")
-            torch.save(ckpt, best_loss_path)
+            best_loss_full_path = os.path.join(SAVE_DIR, "mimo_phase1_best_loss_full.pth")
+            best_loss_weights_path = os.path.join(SAVE_DIR, "mimo_phase1_best_loss.pth")
+            save_checkpoint_pair(ckpt, model, best_loss_full_path, best_loss_weights_path)
             print(f">>> ✅ New BEST-LOSS model saved (val_loss={val_loss:.4f})")
 
         # -------- Save BEST by val IoU --------
         if val_iou > best_val_iou:
             best_val_iou = val_iou
             ckpt["best_val_iou"] = best_val_iou
-            best_iou_path = os.path.join(SAVE_DIR, "mimo_phase1_best_iou.pth")
-            torch.save(ckpt, best_iou_path)
+            best_iou_full_path = os.path.join(SAVE_DIR, "mimo_phase1_best_iou_full.pth")
+            best_iou_weights_path = os.path.join(SAVE_DIR, "mimo_phase1_best_iou.pth")
+            save_checkpoint_pair(ckpt, model, best_iou_full_path, best_iou_weights_path)
             print(f">>> ✅ New BEST-IOU model saved (val_iou={val_iou:.4f})")
 
     print("\n✅ PHASE 1 TRAINING COMPLETED SUCCESSFULLY")
