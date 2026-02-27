@@ -25,16 +25,16 @@ cv2.ocl.setUseOpenCL(False)
 
 # ========================= CONFIG =============================
 DATA_ROOT = "data/bdd100k"
-IMG_SIZE = 448
+IMG_SIZE = 512
 BATCH_SIZE = 8
-EPOCHS = 30
+EPOCHS = 20
 LR = 1e-3
 WEIGHT_DECAY = 1e-4
 
-NUM_WORKERS = 2
-PIN_MEMORY = True
+NUM_WORKERS = 0
+PIN_MEMORY = False
 
-VAL_SUBSET = 500
+VAL_SUBSET = 1000
 SEED = 42
 USE_AMP = True
 
@@ -53,6 +53,46 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+
+
+def resolve_drivable_label_root(data_root: str):
+    """
+    Support BDD100K drivable label layouts:
+    - labels/drivable/labels/{split}
+    - labels/drivable/color_labels/{split}
+    """
+    candidates = [
+        os.path.join(data_root, "labels", "drivable", "labels"),
+        os.path.join(data_root, "labels", "drivable", "color_labels"),
+    ]
+
+    for cand in candidates:
+        if os.path.isdir(cand):
+            return cand
+
+    raise FileNotFoundError(
+        "Cannot find drivable label directory. Checked: " + ", ".join(candidates)
+    )
+
+
+def validate_data_layout(data_root: str):
+    image_root = os.path.join(data_root, "images100k", "100k")
+    if not os.path.isdir(image_root):
+        raise FileNotFoundError(f"Image directory not found: {image_root}")
+
+    drivable_root = resolve_drivable_label_root(data_root)
+
+    for split in ("train", "val"):
+        img_split = os.path.join(image_root, split)
+        lbl_split = os.path.join(drivable_root, split)
+        if not os.path.isdir(img_split):
+            raise FileNotFoundError(f"Image split not found: {img_split}")
+        if not os.path.isdir(lbl_split):
+            raise FileNotFoundError(f"Drivable label split not found: {lbl_split}")
+
+    return image_root, drivable_root
 
 
 def compute_seg_metrics(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-6):
@@ -155,6 +195,10 @@ def main():
     print("==============================================")
 
     # ---------------- Dataset ----------------
+    image_root, drivable_root = validate_data_layout(DATA_ROOT)
+    print(f">>> Image root:    {image_root}")
+    print(f">>> Drivable root: {drivable_root}")
+
     train_ds = BDD100kDriveDataset(root=DATA_ROOT, split="train", img_size=IMG_SIZE)
     val_ds = BDD100kDriveDataset(root=DATA_ROOT, split="val", img_size=IMG_SIZE)
 
