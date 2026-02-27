@@ -4,7 +4,7 @@ import random
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 try:
     from tqdm import tqdm
@@ -25,18 +25,23 @@ cv2.ocl.setUseOpenCL(False)
 
 # ========================= CONFIG =============================
 DATA_ROOT = "data/bdd100k"
-IMG_SIZE = 448
+IMG_SIZE = 512
 BATCH_SIZE = 8
-EPOCHS = 35
+EPOCHS = 20
 LR = 1e-3
 WEIGHT_DECAY = 1e-4
 
-NUM_WORKERS = 2
-PIN_MEMORY = True
+NUM_WORKERS = 0
+PIN_MEMORY = False
 
-VAL_SUBSET = 500
+VAL_SUBSET = 1000
 SEED = 42
 USE_AMP = True
+
+# Hard-negative rebalancing (for reducing false positives)
+ENABLE_HARD_NEG_REBALANCE = True
+NEGATIVE_PIXEL_RATIO_THRESHOLD = 0.003
+HARD_NEGATIVE_TARGET_RATIO = 0.35
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -95,6 +100,63 @@ def validate_data_layout(data_root: str):
     return image_root, drivable_root
 
 
+
+
+def build_hard_negative_sampler(train_ds):
+    """
+    Build weighted sampler to oversample hard-negative samples
+    (samples with near-empty drivable pixels).
+    """
+    if not ENABLE_HARD_NEG_REBALANCE:
+        return None
+
+    neg_flags = []
+
+    for lbl_name in train_ds.labels:
+        lbl_path = os.path.join(train_ds.lbl_dir, lbl_name)
+        lbl = cv2.imread(lbl_path, cv2.IMREAD_GRAYSCALE)
+        if lbl is None:
+            neg_flags.append(False)
+            continue
+
+        drive = ((lbl == 1) | (lbl == 2))
+        drive_ratio = float(drive.mean())
+        neg_flags.append(drive_ratio <= NEGATIVE_PIXEL_RATIO_THRESHOLD)
+
+    n_total = len(neg_flags)
+    n_neg = int(sum(neg_flags))
+    n_pos = n_total - n_neg
+
+    if n_total == 0 or n_neg == 0 or n_pos == 0:
+        print(
+            ">>> Hard-negative rebalance skipped "
+            f"(total={n_total}, neg={n_neg}, pos={n_pos})"
+        )
+        return None
+
+    target_ratio = min(max(HARD_NEGATIVE_TARGET_RATIO, 0.01), 0.99)
+
+    pos_w = 1.0
+    neg_w = (target_ratio * n_pos) / ((1.0 - target_ratio) * n_neg)
+
+    sample_weights = [neg_w if is_neg else pos_w for is_neg in neg_flags]
+    sampler = WeightedRandomSampler(
+        weights=torch.tensor(sample_weights, dtype=torch.double),
+        num_samples=n_total,
+        replacement=True,
+    )
+
+    est_neg_ratio = (neg_w * n_neg) / (neg_w * n_neg + pos_w * n_pos)
+    print(
+        ">>> Hard-negative rebalance enabled | "
+        f"neg={n_neg}/{n_total} ({n_neg / n_total:.2%}) | "
+        f"target_neg_ratio={target_ratio:.2f} | "
+        f"estimated_sampled_neg_ratio={est_neg_ratio:.2f}"
+    )
+
+    return sampler
+
+
 def compute_seg_metrics(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-6):
     """
     Binary segmentation metrics from logits:
@@ -136,6 +198,9 @@ def build_checkpoint(
             "weight_decay": WEIGHT_DECAY,
             "use_amp": USE_AMP,
             "seed": SEED,
+            "enable_hard_neg_rebalance": ENABLE_HARD_NEG_REBALANCE,
+            "neg_pixel_ratio_threshold": NEGATIVE_PIXEL_RATIO_THRESHOLD,
+            "hard_negative_target_ratio": HARD_NEGATIVE_TARGET_RATIO,
         },
     }
 
@@ -210,10 +275,13 @@ def main():
     print(f">>> Train samples: {len(train_ds)}")
     print(f">>> Val samples:   {len(val_ds)}")
 
+    train_sampler = build_hard_negative_sampler(train_ds)
+
     train_loader = DataLoader(
         train_ds,
         batch_size=BATCH_SIZE,
-        shuffle=True,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
         drop_last=False,
@@ -372,4 +440,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
