@@ -278,32 +278,6 @@ Evaluation criteria include:
 
 ---
 
-# Project Structure
-
-```text
-MiMo/
-│
-├── models/
-│   └── MiMo.py
-│
-├── datasets/
-│
-├── configs/
-│
-├── training/
-│
-├── evaluation/
-│
-├── docs/
-│   └── mimo_architecture.png
-│
-├── weights/
-│
-└── README.md
-```
-
----
-
 # Example Usage
 
 ## Create Model
