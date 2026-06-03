@@ -433,7 +433,7 @@ The long-term objective is to develop a unified perception framework capable of 
 
 # Author
 
-**Joan Billy**
+**Nguyen Van Cuong**
 
 Research Interests:
 
