@@ -1,9 +1,6 @@
 # MiMo_Model
 # MiMo: A Lightweight Multi-Task Perception Network for Autonomous Driving
 
-<p align="center">
-  <img src="docs/mimo_architecture.png" width="800">
-</p>
 
 <p align="center">
   <b>Multi-Task Learning • Autonomous Driving • Computer Vision • Edge AI</b>
