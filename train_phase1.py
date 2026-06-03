@@ -25,14 +25,14 @@ cv2.ocl.setUseOpenCL(False)
 
 # ========================= CONFIG =============================
 DATA_ROOT = "data/bdd100k"
-IMG_SIZE = 512
+IMG_SIZE = 448
 BATCH_SIZE = 8
-EPOCHS = 20
+EPOCHS = 40
 LR = 1e-3
 WEIGHT_DECAY = 1e-4
 
-NUM_WORKERS = 0
-PIN_MEMORY = False
+NUM_WORKERS = 1
+PIN_MEMORY = True
 
 VAL_SUBSET = 1000
 SEED = 42
@@ -81,7 +81,6 @@ def resolve_drivable_label_root(data_root: str):
         "Cannot find drivable label directory. Checked: " + ", ".join(candidates)
     )
 
-
 def validate_data_layout(data_root: str):
     image_root = os.path.join(data_root, "images100k", "100k")
     if not os.path.isdir(image_root):
@@ -98,9 +97,6 @@ def validate_data_layout(data_root: str):
             raise FileNotFoundError(f"Drivable label split not found: {lbl_split}")
 
     return image_root, drivable_root
-
-
-
 
 def build_hard_negative_sampler(train_ds):
     """
