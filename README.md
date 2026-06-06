@@ -217,8 +217,8 @@ Future work may investigate dynamic task balancing methods such as uncertainty w
 
 | Task                        | Status     |
 | --------------------------- | ---------- |
-| Object Detection            | ✅          |
-| Driveable Area Segmentation | ✅          |
+| Driveable Area Segmentation | ✅         |
+| Object Detection            | 🚧 Planned |
 | Lane Detection              | 🚧 Planned |
 | Traffic Sign Recognition    | 🚧 Planned |
 | Traffic Light Detection     | 🚧 Planned |
@@ -394,7 +394,7 @@ The long-term objective is to develop a unified perception framework capable of 
 ```bibtex
 @misc{mimo2026,
   title={MiMo: A Lightweight Multi-Task Perception Network for Autonomous Driving},
-  author={Joan Billy},
+  author={Nguyen Van Cuong},
   year={2026},
   note={Independent Research Project}
 }
