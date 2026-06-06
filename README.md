@@ -414,8 +414,3 @@ Research Interests:
 * Robotics
 * Multi-Task Learning
 
----
-
-## License
-
-This project is released under the MIT License.
